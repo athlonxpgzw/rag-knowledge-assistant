@@ -23,11 +23,11 @@ description: 基于向量数据库的 RAG(检索增强生成) 知识库助手。
 
 ```bash
 # 1. 安装依赖 (首次使用)
-cd C:\Users\admin\AppData\Roaming\npm\node_modules\openclaw\skills\rag-skill\scripts
+cd scripts
 pip install -r requirements.txt
 
 # 2. 创建知识库索引 (确保 knowledge 目录有文档)
-python index_knowledge.py --knowledge-dir ./knowledge --output-dir ./vectorstore
+python index_knowledge.py --knowledge-dir ../../knowledge --output-dir ../../vectorstore
 
 # 3. 验证索引
 python rag_query.py "测试问题" --interactive

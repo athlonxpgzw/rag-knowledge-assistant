@@ -2,8 +2,7 @@
 
 ## 当前状态
 
-✅ 代码已准备就绪，位于：
-`C:\Users\admin\AppData\Roaming\npm\node_modules\openclaw\skills\rag-skill`
+✅ 代码已准备就绪
 
 ✅ Git 仓库已初始化并提交
 
@@ -26,7 +25,7 @@
 #### 2. 推送代码
 
 ```bash
-cd C:\Users\admin\AppData\Roaming\npm\node_modules\openclaw\skills\rag-skill
+cd <skill-directory>
 
 # 使用 Token 推送 (替换 YOUR_TOKEN)
 git push https://YOUR_TOKEN@github.com/AIxbinge/rag-skill.git main
@@ -37,7 +36,7 @@ git push https://YOUR_TOKEN@github.com/AIxbinge/rag-skill.git main
 ### 方法 2: 使用 Git Credential Manager
 
 ```bash
-cd C:\Users\admin\AppData\Roaming\npm\node_modules\openclaw\skills\rag-skill
+cd <skill-directory>
 
 # 执行推送，会弹出登录窗口
 git push -u origin main
@@ -62,7 +61,7 @@ cat ~/.ssh/id_ed25519.pub
 #### 2. 更改远程 URL 为 SSH
 
 ```bash
-cd C:\Users\admin\AppData\Roaming\npm\node_modules\openclaw\skills\rag-skill
+cd <skill-directory>
 
 git remote set-url origin git@github.com:AIxbinge/rag-skill.git
 git push -u origin main
@@ -93,7 +92,7 @@ https://github.com/AIxbinge/rag-skill
 
 ```bash
 # 完整流程 (使用 Token 方式)
-cd C:\Users\admin\AppData\Roaming\npm\node_modules\openclaw\skills\rag-skill
+cd <skill-directory>
 
 # 如果还没有 Token，先创建一个
 # 然后执行:

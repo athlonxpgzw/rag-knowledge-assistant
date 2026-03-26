@@ -15,13 +15,13 @@
 ### 1. 安装依赖
 
 ```bash
-cd C:\Users\admin\AppData\Roaming\npm\node_modules\openclaw\skills\rag-skill\scripts
+cd scripts
 pip install -r requirements.txt
 ```
 
 ### 2. 准备知识库
 
-将文档放入 `C:\Users\admin\.openclaw\workspace\knowledge` 目录：
+将文档放入 `knowledge` 目录：
 
 ```
 knowledge/
