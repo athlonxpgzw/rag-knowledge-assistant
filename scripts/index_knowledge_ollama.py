@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-知识库向量化索引脚本
-将 knowledge 目录下的文档转换为向量并存储到 Chroma 数据库
+知识库向量化索引脚本 (Ollama 版本)
+使用 Ollama 的 embedding 模型将 knowledge 目录下的文档转换为向量并存储到 Chroma 数据库
 
 使用方法:
-    python index_knowledge.py [--knowledge-dir ./knowledge] [--output-dir ./vectorstore]
+    python index_knowledge_ollama.py [--knowledge-dir ./knowledge] [--output-dir ./vectorstore]
 """
 
 import os
 import sys
 import argparse
+import requests
+import json
 from pathlib import Path
 
 # Windows 控制台 UTF-8 支持
@@ -26,27 +28,60 @@ try:
     )
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_community.vectorstores import Chroma
-    from langchain_community.embeddings import HuggingFaceEmbeddings
     print("✓ LangChain 依赖已加载")
 except ImportError as e:
     print(f"✗ 缺少依赖：{e}")
     print("\n请安装必要的包:")
-    print("  pip install langchain langchain-community chromadb pypdf unstructured python-docx")
+    print("  pip install langchain langchain-community langchain-text-splitters chromadb pypdf unstructured python-docx")
     sys.exit(1)
 
 
-def create_embeddings():
-    """创建 Embedding 模型实例"""
-    print("正在加载 Embedding 模型 (BAAI/bge-m3)...")
-    print("提示：首次使用需要下载模型 (~2GB)，请确保网络畅通")
-    print("如下载失败，可使用国内镜像：export HF_ENDPOINT=https://hf-mirror.com")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-m3",
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-        show_progress=True
-    )
-    return embeddings
+def get_ollama_embedding(text: str, model: str = "nomic-embed-text-v2-moe"):
+    """使用 Ollama API 获取文本的 embedding"""
+    url = "http://localhost:11434/api/embeddings"
+    
+    payload = {
+        "model": model,
+        "prompt": text
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        return result["embedding"]
+    except requests.exceptions.ConnectionError:
+        print("✗ 错误：无法连接到 Ollama (http://localhost:11434)")
+        print("  请确保 Ollama 服务正在运行：ollama serve")
+        sys.exit(1)
+    except Exception as e:
+        print(f"✗ 获取 embedding 失败：{e}")
+        return None
+
+
+class OllamaEmbeddings:
+    """Ollama Embedding 适配器"""
+    
+    def __init__(self, model: str = "nomic-embed-text-v2-moe"):
+        self.model = model
+        self._embeddings_cache = {}
+    
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """批量获取文档的 embedding"""
+        embeddings = []
+        for i, text in enumerate(texts):
+            print(f"  处理 {i+1}/{len(texts)}...", end='\r')
+            emb = get_ollama_embedding(text, self.model)
+            if emb:
+                embeddings.append(emb)
+            else:
+                embeddings.append([0] * 1024)  # 返回零向量作为后备
+        print(f"✓ 完成 {len(texts)} 个文档的 embedding")
+        return embeddings
+    
+    def embed_query(self, text: str) -> list[float]:
+        """获取单个查询的 embedding"""
+        return get_ollama_embedding(text, self.model) or [0] * 1024
 
 
 def load_documents(knowledge_dir: str):
@@ -175,14 +210,14 @@ def create_vectorstore(chunks, embeddings, output_dir: str):
     
     print(f"\n✓ 向量数据库创建成功!")
     print(f"  - 文档片段：{len(chunks)} 个")
-    print(f"  - 向量维度：{embeddings.embed_query('test') and len(embeddings.embed_query('test'))}")
+    print(f"  - 模型：nomic-embed-text-v2-moe (Ollama)")
     print(f"  - 存储位置：{output_path.absolute()}")
     
     return vectorstore
 
 
 def main():
-    parser = argparse.ArgumentParser(description="知识库向量化索引工具")
+    parser = argparse.ArgumentParser(description="知识库向量化索引工具 (Ollama 版本)")
     parser.add_argument(
         "--knowledge-dir", "-k",
         default="./knowledge",
@@ -206,6 +241,11 @@ def main():
         help="文本分块重叠 (默认：50)"
     )
     parser.add_argument(
+        "--model",
+        default="nomic-embed-text-v2-moe",
+        help="Ollama embedding 模型 (默认：nomic-embed-text-v2-moe)"
+    )
+    parser.add_argument(
         "--rebuild",
         action="store_true",
         help="强制重建向量库 (删除已有数据)"
@@ -214,8 +254,23 @@ def main():
     args = parser.parse_args()
     
     print("=" * 60)
-    print("📚 OpenClaw RAG 知识库索引工具")
+    print("📚 OpenClaw RAG 知识库索引工具 (Ollama 版本)")
     print("=" * 60)
+    print(f"使用模型：{args.model}")
+    
+    # 检查 Ollama 连接
+    print("\n检查 Ollama 服务...")
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=5)
+        if response.status_code == 200:
+            print("✓ Ollama 服务正常运行")
+        else:
+            print("✗ Ollama 服务响应异常")
+            sys.exit(1)
+    except requests.exceptions.ConnectionError:
+        print("✗ 无法连接到 Ollama 服务")
+        print("  请先启动 Ollama: ollama serve")
+        sys.exit(1)
     
     # 检查是否强制重建
     output_path = Path(args.output_dir)
@@ -238,15 +293,16 @@ def main():
             print("   支持格式：.pdf, .md, .txt, .docx")
             sys.exit(1)
         
-        # 2. 创建 Embedding 模型
-        embeddings = create_embeddings()
-        
-        # 3. 分割文档
+        # 2. 分割文档
         chunks = split_documents(
             documents,
             chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap
         )
+        
+        # 3. 创建 Ollama Embedding 适配器
+        print(f"\n初始化 Ollama Embedding ({args.model})...")
+        embeddings = OllamaEmbeddings(model=args.model)
         
         # 4. 创建向量库
         vectorstore = create_vectorstore(chunks, embeddings, args.output_dir)
@@ -257,12 +313,11 @@ def main():
             "vectorstore_dir": str(output_path.absolute()),
             "chunk_size": args.chunk_size,
             "chunk_overlap": args.chunk_overlap,
-            "embedding_model": "BAAI/bge-m3",
+            "embedding_model": f"ollama/{args.model}",
             "document_count": len(documents),
             "chunk_count": len(chunks)
         }
         
-        import json
         config_file = output_path / "index_config.json"
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
@@ -272,6 +327,9 @@ def main():
         print("✅ 索引完成！现在可以使用 RAG 进行智能检索了")
         print("=" * 60)
         
+    except FileNotFoundError as e:
+        print(f"\n✗ 索引失败：{e}")
+        sys.exit(1)
     except Exception as e:
         print(f"\n✗ 索引失败：{e}")
         import traceback

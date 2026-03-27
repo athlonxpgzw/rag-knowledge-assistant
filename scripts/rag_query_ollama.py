@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-RAG 向量检索脚本
-使用向量相似度搜索知识库中的相关内容
+RAG 向量检索脚本 (Ollama 版本)
+使用 Ollama embedding 模型进行向量相似度搜索
 
 使用方法:
-    python rag_query.py "你的问题" [--vectorstore ./vectorstore] [--top-k 5]
+    python rag_query_ollama.py "你的问题" [--vectorstore ./vectorstore] [--top-k 5]
 """
 
 import os
 import sys
 import argparse
 import json
+import requests
 from pathlib import Path
 
 # Windows 控制台 UTF-8 支持
@@ -20,7 +21,6 @@ if sys.platform == 'win32':
 # 检查依赖
 try:
     from langchain_community.vectorstores import Chroma
-    from langchain_community.embeddings import HuggingFaceEmbeddings
     print("✓ LangChain 依赖已加载")
 except ImportError as e:
     print(f"✗ 缺少依赖：{e}")
@@ -29,14 +29,48 @@ except ImportError as e:
     sys.exit(1)
 
 
-def load_vectorstore(vectorstore_dir: str):
+def get_ollama_embedding(text: str, model: str = "nomic-embed-text-v2-moe"):
+    """使用 Ollama API 获取文本的 embedding"""
+    url = "http://localhost:11434/api/embeddings"
+    
+    payload = {
+        "model": model,
+        "prompt": text
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        return result["embedding"]
+    except requests.exceptions.ConnectionError:
+        print("✗ 错误：无法连接到 Ollama (http://localhost:11434)")
+        print("  请确保 Ollama 服务正在运行：ollama serve")
+        sys.exit(1)
+    except Exception as e:
+        print(f"✗ 获取 embedding 失败：{e}")
+        return None
+
+
+class OllamaEmbeddings:
+    """Ollama Embedding 适配器"""
+    
+    def __init__(self, model: str = "nomic-embed-text-v2-moe"):
+        self.model = model
+    
+    def embed_query(self, text: str) -> list[float]:
+        """获取单个查询的 embedding"""
+        return get_ollama_embedding(text, self.model) or [0] * 1024
+
+
+def load_vectorstore(vectorstore_dir: str, model: str = "nomic-embed-text-v2-moe"):
     """加载已有的向量数据库"""
     vectorstore_path = Path(vectorstore_dir)
     
     if not vectorstore_path.exists():
         raise FileNotFoundError(
             f"向量数据库不存在：{vectorstore_dir}\n"
-            "请先运行 index_knowledge.py 创建索引"
+            "请先运行 index_knowledge_ollama.py 创建索引"
         )
     
     # 检查配置文件
@@ -48,16 +82,13 @@ def load_vectorstore(vectorstore_dir: str):
         print(f"  - 知识库：{config.get('knowledge_dir', '未知')}")
         print(f"  - 文档数：{config.get('document_count', 0)}")
         print(f"  - 片段数：{config.get('chunk_count', 0)}")
+        print(f"  - 模型：{config.get('embedding_model', '未知')}")
     
     print(f"\n正在加载向量数据库：{vectorstore_path.absolute()}...")
     
-    # 加载 Embedding 模型
-    print("加载 Embedding 模型 (BAAI/bge-m3)...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-m3",
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True}
-    )
+    # 加载 Ollama Embedding 模型
+    print(f"加载 Ollama Embedding 模型 ({model})...")
+    embeddings = OllamaEmbeddings(model=model)
     
     # 加载向量库
     vectorstore = Chroma(
@@ -70,20 +101,24 @@ def load_vectorstore(vectorstore_dir: str):
     return vectorstore, embeddings
 
 
-def similarity_search(vectorstore, query: str, top_k: int = 5, score_threshold: float = 0.6):
-    """执行相似度搜索"""
+def similarity_search(vectorstore, query: str, top_k: int = 5, distance_threshold: float = 200.0):
+    """执行相似度搜索
+    
+    Chroma 使用 L2 距离，距离越小越相似。
+    典型 L2 距离范围：0 (完全相同) 到 500+ (完全不同)
+    建议阈值：150-200 用于宽松匹配，100-150 用于严格匹配
+    """
     print(f"\n🔍 检索问题：{query}")
-    print(f"   返回数量：top_k={top_k}, 阈值={score_threshold}")
+    print(f"   返回数量：top_k={top_k}, 距离阈值={distance_threshold}")
     
     # 执行搜索
     results = vectorstore.similarity_search_with_score(query, k=top_k)
     
-    # 过滤低相似度结果
+    # 过滤高距离结果（距离越小越相似）
     filtered_results = []
-    for doc, score in results:
-        similarity = 1 - score  # 转换为相似度分数
-        if similarity >= score_threshold:
-            filtered_results.append((doc, score))
+    for doc, distance in results:
+        if distance <= distance_threshold:
+            filtered_results.append((doc, distance))
     
     print(f"\n✓ 找到 {len(filtered_results)} 个相关片段")
     
@@ -94,17 +129,15 @@ def format_results(results, include_metadata: bool = True):
     """格式化搜索结果"""
     output = []
     
-    for i, (doc, score) in enumerate(results, 1):
-        similarity = 1 - score
+    for i, (doc, distance) in enumerate(results, 1):
+        # L2 距离，越小越相似
         output.append(f"\n{'='*60}")
-        output.append(f"📄 结果 #{i} (相似度：{similarity:.2%})")
+        output.append(f"📄 结果 #{i} (L2 距离：{distance:.2f})")
         output.append(f"{'='*60}")
         
         if include_metadata:
             source = doc.metadata.get('source', '未知来源')
             output.append(f"来源：{source}")
-            if 'page' in doc.metadata:
-                output.append(f"页码：{doc.metadata['page']}")
         
         output.append(f"\n{doc.page_content}")
     
@@ -112,7 +145,7 @@ def format_results(results, include_metadata: bool = True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="RAG 向量检索工具")
+    parser = argparse.ArgumentParser(description="RAG 向量检索工具 (Ollama 版本)")
     parser.add_argument(
         "query",
         nargs="?",
@@ -130,10 +163,15 @@ def main():
         help="返回结果数量 (默认：5)"
     )
     parser.add_argument(
-        "--score-threshold", "-t",
+        "--distance-threshold", "-t",
         type=float,
-        default=0.6,
-        help="相似度阈值 (默认：0.6)"
+        default=200.0,
+        help="L2 距离阈值 (默认：200.0，越小越严格)"
+    )
+    parser.add_argument(
+        "--model", "-m",
+        default="nomic-embed-text-v2-moe",
+        help="Ollama embedding 模型 (默认：nomic-embed-text-v2-moe)"
     )
     parser.add_argument(
         "--json",
@@ -149,12 +187,12 @@ def main():
     args = parser.parse_args()
     
     print("=" * 60)
-    print("🤖 OpenClaw RAG 智能检索")
+    print("🤖 OpenClaw RAG 智能检索 (Ollama 版本)")
     print("=" * 60)
     
     try:
         # 加载向量库
-        vectorstore, embeddings = load_vectorstore(args.vectorstore)
+        vectorstore, embeddings = load_vectorstore(args.vectorstore, args.model)
         
         # 交互模式
         if args.interactive or not args.query:
@@ -174,7 +212,7 @@ def main():
                         vectorstore,
                         query,
                         top_k=args.top_k,
-                        score_threshold=args.score_threshold
+                        distance_threshold=args.distance_threshold
                     )
                     
                     if results:
@@ -194,7 +232,7 @@ def main():
                 vectorstore,
                 args.query,
                 top_k=args.top_k,
-                score_threshold=args.score_threshold
+                distance_threshold=args.distance_threshold
             )
             
             if args.json:
