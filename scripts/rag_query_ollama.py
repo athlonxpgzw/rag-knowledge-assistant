@@ -31,7 +31,7 @@ except ImportError as e:
 
 def get_ollama_embedding(text: str, model: str = "nomic-embed-text-v2-moe"):
     """使用 Ollama API 获取文本的 embedding"""
-    url = "http://localhost:11434/api/embeddings"
+    url = "http://192.168.146.163:11434/api/embeddings"
     
     payload = {
         "model": model,
@@ -44,7 +44,7 @@ def get_ollama_embedding(text: str, model: str = "nomic-embed-text-v2-moe"):
         result = response.json()
         return result["embedding"]
     except requests.exceptions.ConnectionError:
-        print("✗ 错误：无法连接到 Ollama (http://localhost:11434)")
+        print("✗ 错误：无法连接到 Ollama (http://192.168.146.163:11434)")
         print("  请确保 Ollama 服务正在运行：ollama serve")
         sys.exit(1)
     except Exception as e:
