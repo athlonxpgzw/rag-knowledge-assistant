@@ -27,10 +27,10 @@ cd scripts
 pip install -r requirements.txt
 
 # 2. 创建知识库索引 (确保 knowledge 目录有文档)
-python index_knowledge.py --knowledge-dir ../../knowledge --output-dir ../../vectorstore
+python index_knowledge_ollama.py --knowledge-dir ../knowledge --output-dir ../vectorstore
 
 # 3. 验证索引
-python rag_query.py "测试问题" --interactive
+python rag_query_ollama.py "测试问题" --interactive
 ```
 
 ### 日常使用
@@ -125,10 +125,10 @@ knowledge/                    # 知识库根目录
 copy 新文档.pdf ./knowledge/company-policies/
 
 # 2. 重新构建索引 (或使用增量索引)
-python index_knowledge.py --knowledge-dir ./knowledge --rebuild
+python index_knowledge_ollama.py --knowledge-dir ./knowledge --rebuild
 
 # 3. 验证
-python rag_query.py "新文档相关内容"
+python rag_query_ollama.py "新文档相关内容"
 ```
 
 ### 索引配置
@@ -141,8 +141,9 @@ rag:
     persist_directory: ./vectorstore
   
   embedding:
-    model: BAAI/bge-m3  # 中文推荐
-    device: cpu
+    type: ollama
+    model: nomic-embed-text-v2-moe
+    url: http://192.168.146.163:11434/api/embeddings
   
   retrieval:
     top_k: 5
@@ -201,14 +202,18 @@ retrieval:
 **中文场景推荐**：
 ```yaml
 embedding:
-  model: BAAI/bge-m3      # 中英双语，效果好
+  type: ollama
+  model: nomic-embed-text-v2-moe
+  url: http://192.168.146.163:11434/api/embeddings
   # model: shibing624/text2vec-base-chinese  # 纯中文
 ```
 
 **英文场景**：
 ```yaml
 embedding:
-  model: text-embedding-3-small  # OpenAI
+  type: ollama
+  model: nomic-embed-text-v2-moe
+  url: http://192.168.146.163:11434/api/embeddings
   # model: all-MiniLM-L6-v2      # Sentence Transformers
 ```
 
@@ -227,7 +232,7 @@ embedding:
 dir ./vectorstore
 
 # 降低阈值重试
-python rag_query.py "问题" --score-threshold 0.4
+python rag_query_ollama.py "问题" --score-threshold 0.4
 
 # 查看已索引的文档
 cat ./vectorstore/index_config.json
@@ -249,7 +254,9 @@ chunking:
 
 # 或更换 Embedding 模型
 embedding:
+  type: ollama
   model: BAAI/bge-large-zh  # 更大的中文模型
+  url: http://192.168.146.163:11434/api/embeddings
 ```
 
 ### 问题：索引速度慢
@@ -276,7 +283,7 @@ embedding:
 
 ```bash
 # 向量检索 + 关键词验证
-python rag_query.py "API 认证"
+python rag_query_ollama.py "API 认证"
 grep -r "authentication" ./knowledge/**/*.md
 ```
 
@@ -327,32 +334,32 @@ with pdfplumber.open("document.pdf") as pdf:
 
 ```bash
 # 基本用法
-python index_knowledge.py
+python index_knowledge_ollama.py
 
 # 指定目录
-python index_knowledge.py -k ./knowledge -o ./vectorstore
+python index_knowledge_ollama.py -k ./knowledge -o ./vectorstore
 
 # 强制重建
-python index_knowledge.py --rebuild
+python index_knowledge_ollama.py --rebuild
 
 # 调整分块
-python index_knowledge.py --chunk-size 300 --chunk-overlap 100
+python index_knowledge_ollama.py --chunk-size 300 --chunk-overlap 100
 ```
 
 ### 查询命令
 
 ```bash
 # 单次查询
-python rag_query.py "你的问题"
+python rag_query_ollama.py "你的问题"
 
 # 交互模式
-python rag_query.py --interactive
+python rag_query_ollama.py --interactive
 
 # 调整参数
-python rag_query.py "问题" -k 10 -t 0.5
+python rag_query_ollama.py "问题" -k 10 -t 0.5
 
 # JSON 输出
-python rag_query.py "问题" --json
+python rag_query_ollama.py "问题" --json
 ```
 
 ## 配置示例
@@ -368,9 +375,9 @@ rag:
     persist_directory: ./vectorstore
   
   embedding:
-    type: huggingface
-    model: BAAI/bge-m3
-    device: cpu
+    type: ollama
+    model: nomic-embed-text-v2-moe
+    url: http://192.168.146.163:11434/api/embeddings
   
   retrieval:
     top_k: 5
@@ -396,8 +403,8 @@ logging:
 
 ## 参考资料
 
-- `scripts/index_knowledge.py` - 索引构建脚本
-- `scripts/rag_query.py` - 向量检索脚本
+- `scripts/index_knowledge_ollama.py` - 索引构建脚本
+- `scripts/rag_query_ollama.py` - 向量检索脚本
 - `scripts/requirements.txt` - Python 依赖
 - `rag-config.yaml` - 配置文件模板
 - `references/pdf_reading.md` - PDF 处理指南
