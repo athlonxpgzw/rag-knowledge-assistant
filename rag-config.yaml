@@ -12,9 +12,9 @@ rag:
     
   # Embedding 模型配置
   embedding:
-    type: huggingface
-    model: BAAI/bge-m3
-    device: cpu
+    type: ollama
+    model: nomic-embed-text-v2-moe
+    url: http://192.168.146.163:11434/api/embeddings
     # 可选：使用 API 服务
     # type: openai
     # model: text-embedding-3-small
